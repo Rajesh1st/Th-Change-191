@@ -3,12 +3,11 @@ import json
 import html
 import logging
 from datetime import datetime
-from telegram import Update, MessageEntity
+from telegram import Update, MessageEntity, InputFile
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, filters, ContextTypes
 )
 from telegram.error import TelegramError
-
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")  # 👈 Render pe env variable se milega
 DATA_FILE = "user_data.json"
@@ -68,6 +67,7 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         for e in update.message.caption_entities or []
     ]
+
     user_data[user_id] = {
         "state": "waiting_for_image",
         "video_file_id": video.file_id,
@@ -105,16 +105,23 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ) for e in user_data[user_id]["caption_entities"]
         ] if user_data[user_id]["caption_entities"] else None
 
+        # ✅ Download image and send video with InputFile
+        image_file = await context.bot.get_file(user_data[user_id]["image_file_id"])
+        image_path = f"cover_{user_id}.jpg"
+        await image_file.download_to_drive(image_path)
+
         await context.bot.send_video(
             chat_id=update.message.chat_id,
             video=user_data[user_id]["video_file_id"],
-            cover=user_data[user_id]["image_file_id"],
+            cover=InputFile(image_path),
             caption=user_data[user_id]["video_caption"],
             caption_entities=entities,
             supports_streaming=True,
             has_spoiler=user_data[user_id]["has_spoiler"]
         )
+
         await update.message.reply_text("✅ Video sent with the cover!")
+        os.remove(image_path)  # 🧹 Cleanup
 
     except TelegramError as e:
         await update.message.reply_text(f"❌ Error sending video: {str(e)}")
